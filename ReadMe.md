@@ -9,6 +9,13 @@ Status: read-only and not extensively tested. Not much in the way of vendor-spec
 
 ### references/notes
 
-http://www.exiv2.org/Exif2-2.PDF
-https://www.media.mit.edu/pia/Research/deepview/exif.html
-http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/EXIF.html
+* http://www.exiv2.org/Exif2-2.PDF
+* https://www.media.mit.edu/pia/Research/deepview/exif.html
+* http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/EXIF.html
+
+## License
+
+Licensed under either of
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+at your option.
