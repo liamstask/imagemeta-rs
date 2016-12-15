@@ -1,0 +1,12 @@
+
+language: rust
+
+rust:
+  - stable
+  - 1.10.0
+
+cache: cargo
+
+script:
+  - cargo build --verbose
+  - cargo test --verbose
