@@ -3,6 +3,7 @@
 
 [![Build Status](https://travis-ci.org/liamstask/imagemeta-rs.svg)](https://travis-ci.org/liamstask/imagemeta-rs)
 [![Crates.io](https://img.shields.io/crates/v/imagemeta.svg?maxAge=2592000)](https://crates.io/crates/imagemeta)
+[![Docs.rs](https://docs.rs/imagemeta/badge.svg)](https://docs.rs/imagemeta)
 
 Basic image metadata handling library in Rust.
 
