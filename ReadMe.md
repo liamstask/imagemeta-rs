@@ -1,11 +1,17 @@
 
-# exif-rs
+# imagemeta-rs
 
-[![Build Status](https://travis-ci.org/liamstask/exif-rs.svg)](https://travis-ci.org/liamstask/exif-rs)
+[![Build Status](https://travis-ci.org/liamstask/imagemeta-rs.svg)](https://travis-ci.org/liamstask/imagemeta-rs)
 
 Basic [exif](https://en.wikipedia.org/wiki/Exif) handling library in Rust.
 
-Status: read-only and not extensively tested. Not much in the way of vendor-specific support, but should hopefully provide a basis upon which to build.
+### status
+
+New, minimal, and not extensively tested.
+
+**exif**: Basic read/write of exif entities works. Not much in the way of vendor-specific support, but should hopefully provide a basis upon which to build.
+
+**xmp**: would be nice.
 
 ### references/notes
 
