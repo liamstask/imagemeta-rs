@@ -2,8 +2,9 @@
 # imagemeta-rs
 
 [![Build Status](https://travis-ci.org/liamstask/imagemeta-rs.svg)](https://travis-ci.org/liamstask/imagemeta-rs)
+[![Crates.io](https://img.shields.io/crates/v/imagemeta.svg?maxAge=2592000)](https://crates.io/crates/imagemeta)
 
-Basic [exif](https://en.wikipedia.org/wiki/Exif) handling library in Rust.
+Basic image metadata handling library in Rust.
 
 ### status
 
