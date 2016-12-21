@@ -1,7 +1,16 @@
 [package]
-name = "exif"
+name = "exif-rs"
 version = "0.1.0"
 authors = ["Liam Staskawicz <liam@stask.net>"]
+license = "MIT/Apache-2.0"
+readme = "ReadMe.md"
+keywords = ["exif"]
+repository = "https://github.com/liamstask/exif-rs"
+homepage = "https://github.com/liamstask/exif-rs"
+documentation = "https://docs.rs/exif-rs"
+description = """
+Support for manipulating exif data in Rust.
+"""
 
 [dependencies]
 byteorder = "0.5.3"
