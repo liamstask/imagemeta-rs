@@ -2,8 +2,6 @@
 // https://www.imperialviolet.org/binary/jpeg/
 // http://dev.exiv2.org/projects/exiv2/wiki/The_Metadata_in_JPEG_files
 
-extern crate byteorder;
-
 use std::io::prelude::*;
 use std::io;
 use std::io::SeekFrom;
