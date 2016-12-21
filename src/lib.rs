@@ -6,12 +6,45 @@ pub mod jpeg;
 use std::io::prelude::*;
 use std::io;
 use std::io::SeekFrom;
-use byteorder::{ReadBytesExt, BigEndian, LittleEndian, ByteOrder};
+use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian, LittleEndian, ByteOrder};
 
 /// top level data structure representing an entire exif document
 #[derive(Clone, Debug)]
 pub struct Exif {
     pub ifds: Vec<Ifd>,
+}
+
+// why doesn't io::Cursor implement any of these for anything other than [u8]? :(
+struct PosWriter<T> {
+    inner: T,
+    pos: u64,
+}
+
+impl<T: Write + Seek> PosWriter<T> {
+    fn new(inner: T) -> Self {
+        PosWriter{ inner: inner, pos: 0 }
+    }
+    fn position(&self) -> u64 { self.pos }
+}
+
+impl<T: Write> Write for PosWriter<T> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = try!(self.inner.write(buf));
+        self.pos += n as u64;
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl<T: Seek> Seek for PosWriter<T> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let n = try!(self.inner.seek(pos));
+        self.pos = n;
+        Ok(n)
+    }
 }
 
 impl Exif {
@@ -47,6 +80,20 @@ impl Exif {
 
         Ok(Exif{ ifds: ifds })
     }
+
+    /// Write an existing Exif to the given writer
+    pub fn encode<W: Write + Seek>(&self, w: &mut W) -> io::Result<()> {
+        const HEADER: [u8; 8] = [b'I', b'I', 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00];
+
+        let mut pw = PosWriter::new(w);
+        try!(pw.write_all(&HEADER));
+
+        for (n, ifd) in self.ifds.iter().enumerate() {
+            try!(ifd.encode::<_, LittleEndian>(&mut pw, n == self.ifds.len() - 1));
+        }
+
+        Ok(())
+    }
 }
 
 /// Image file directory - container for a collection of Entries
@@ -73,7 +120,7 @@ impl Ifd {
         let offset_to_next_ifd = try!(rdr.read_u32::<B>()) as usize;
 
         // XXX: plumb this back up to the Exif struct
-        let mut thumbnail = JpegThumbnail::new();
+        // let mut thumbnail = JpegThumbnail::new();
 
         for h in &hdrs {
             match h.tag {
@@ -87,6 +134,7 @@ impl Ifd {
                     }
                     // XXX: provide invalid format feedback
                 },
+                /*
                 // only handle jpeg thumbnails at the moment
                 tag::JPEG_THUMBNAIL_LENGTH => {
                     if let OffsetValue::Value(ref v) = h.offset_val {
@@ -98,6 +146,7 @@ impl Ifd {
                         try!(thumbnail.set_offset(rdr, B::read_u32(v) as usize));
                     }
                 },
+                */
                 _ => {
                     let e = try!(Entry::from_header::<_, B>(rdr, h));
                     entries.push(e);
@@ -111,8 +160,69 @@ impl Ifd {
             children: children,
         }, offset_to_next_ifd))
     }
+
+    /// similar to Entry::encode_header(), but the offset to the subIFD
+    /// is encoded in the ULong immediate
+    fn encode_subifd_header<W: Write, B: ByteOrder>(&self, pw: &mut PosWriter<W>, data_offset: usize) -> io::Result<()> {
+        try!(pw.write_u16::<B>(self.id));
+        try!(pw.write_u16::<B>(4));  // ULong
+        try!(pw.write_u32::<B>(1));
+        pw.write_u32::<B>(data_offset as u32)
+    }
+
+    fn encode<W: Write + Seek, B: ByteOrder>(&self, pw: &mut PosWriter<W>, last: bool) -> io::Result<()> {
+        const IFD_HEADER_LEN: usize = 12;
+        const NEXT_IFD_PTR_LEN: usize = 4;
+
+        let num_headers = self.entries.len() + self.children.len();
+        try!(pw.write_u16::<B>(num_headers as u16));
+
+        // data segment for this IFD starts here
+        let mut data_offset = pw.position() as usize + num_headers * IFD_HEADER_LEN + NEXT_IFD_PTR_LEN;
+
+        // track which EntryData instances must be written to this IFD's data segment
+        let mut offset_data_entries = vec![];
+
+        // write headers for both entries and children...
+        for e in &self.entries {
+            if try!(e.encode_header::<_, B>(pw, data_offset)) {
+                data_offset += e.data.total_sz();
+                offset_data_entries.push(e);
+            }
+        }
+
+        for c in &self.children {
+            try!(c.encode_subifd_header::<_, B>(pw, data_offset));
+        }
+
+        // write offset to next IFD or 0 if this is the last
+        // we'll need to seek back here once we know the size of the written data segment and any subIFDs
+        let next_offset_pos = pw.position();
+        try!(pw.write_u32::<B>(0u32)); // placeholder
+
+        // ...followed by data for both entries and children
+        for e in offset_data_entries {
+            try!(e.data.encode_offset_data::<_, B>(pw));
+        }
+
+        for c in &self.children {
+            // at the moment, we do not descend into child hierarchies
+            try!(c.encode::<_, B>(pw, true));
+        }
+
+        // seek back to next_offset location and write it, now that we know it
+        if !last {
+            let cur_pos = pw.position();
+            try!(pw.seek(SeekFrom::Start(next_offset_pos)));
+            try!(pw.write_u32::<B>(cur_pos as u32));
+            try!(pw.seek(SeekFrom::Start(cur_pos)));
+        }
+
+        Ok(())
+    }
 }
 
+/*
 #[derive(Debug)]
 pub struct JpegThumbnail {
     offset: usize,
@@ -145,6 +255,7 @@ impl JpegThumbnail {
         Ok(())
     }
 }
+*/
 
 #[derive(Debug)]
 enum OffsetValue {
@@ -217,6 +328,28 @@ impl Entry {
             data: try!(EntryData::from_header::<_, B>(rdr, h)),
         })
     }
+
+    /// encode the header portion of this enty,
+    /// return true if data must subsequently be written into the data segment
+    fn encode_header<W: Write, B: ByteOrder>(&self, w: &mut W, data_offset: usize) -> io::Result<bool> {
+        try!(w.write_u16::<B>(self.tag));
+        try!(w.write_u16::<B>(self.data.format_code()));
+        try!(w.write_u32::<B>(self.data.len() as u32));
+
+        if self.data.total_sz() > 4 {
+            try!(w.write_u32::<B>(data_offset as u32));
+            Ok(true)
+        } else {
+            try!(self.data.encode_offset_data::<_, B>(w));
+            // immediate data must be padded to 4 bytes
+            let pad = 4isize - self.data.total_sz() as isize;
+            if pad > 0 {
+                let pbuf = [0u8; 4];
+                try!(w.write_all(&mut &pbuf[..pad as usize]));
+            }
+            Ok(false)
+        }
+    }
 }
 
 /// Data associated with an Entry
@@ -237,7 +370,6 @@ pub enum EntryData {
 }
 
 impl EntryData {
-    /*
     fn item_sz(&self) -> usize {
         use self::EntryData::*;
         match *self {
@@ -253,7 +385,7 @@ impl EntryData {
         // better way to implement this?
         match *self {
             Byte(ref v) => v.len(),
-            Ascii(ref v) => v.len(),
+            Ascii(ref v) => v.len() + 1,
             UShort(ref v) => v.len(),
             ULong(ref v) => v.len(),
             URational(ref v) => v.len(),
@@ -288,7 +420,6 @@ impl EntryData {
             Float64(_) => 12,
         }
     }
-    */
 
     fn from_header<R: Read + Seek, B: ByteOrder>(rdr: &mut R, h: &EntryHeader) -> io::Result<Self> {
         let d = match h.offset_val {
@@ -326,7 +457,8 @@ impl EntryData {
                 for _ in 0..h.count { v.push(try!(c.read_u64::<B>())); }
                 Ok(EntryData::URational(v))
             },
-            6 => Ok(EntryData::SignedByte(d.iter().map(|&b| b as i8).collect())), // XXX: better way to convert?
+            // XXX: better way to convert?
+            6 => Ok(EntryData::SignedByte(d.iter().map(|&b| b as i8).collect())),
             7 => Ok(EntryData::Undef(d)),
             8 => {
                 let mut v = Vec::with_capacity(h.count as usize);
@@ -361,13 +493,41 @@ impl EntryData {
             v => Err(io::Error::new(io::ErrorKind::InvalidData, format!("invalid entry header format: 0x{:x}", v)))
         }
     }
+
+    // header portion has already been written, just write data segment
+    fn encode_offset_data<W: Write, B: ByteOrder>(&self, w: &mut W) -> io::Result<()> {
+
+        use self::EntryData::*;
+        match *self {
+            Byte(ref v) | Undef(ref v) => try!(w.write_all(v)),
+            Ascii(ref v) => {
+                try!(w.write_all(v.as_bytes()));
+                try!(w.write_all(b"\0"));
+            },
+            UShort(ref v) =>    for d in v { try!(w.write_u16::<B>(*d)); },
+            ULong(ref v) =>     for d in v { try!(w.write_u32::<B>(*d)); },
+            URational(ref v) => for d in v { try!(w.write_u64::<B>(*d)); },
+            SignedByte(ref v) => {
+                // XXX: better way to convert?
+                let vb = v.iter().map(|&b| b as u8).collect::<Vec<u8>>();
+                try!(w.write_all(&vb))
+            },
+            SShort(ref v) =>    for d in v { try!(w.write_u16::<B>(*d as u16)); },
+            SLong(ref v) =>     for d in v { try!(w.write_u32::<B>(*d as u32)); },
+            SRational(ref v) => for d in v { try!(w.write_u64::<B>(*d as u64)); },
+            Float32(ref v) =>   for d in v { try!(w.write_f32::<B>(*d)); },
+            Float64(ref v) =>   for d in v { try!(w.write_f64::<B>(*d)); },
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::File;
-    use std::io::Cursor;
+    use std::io::{BufReader, Cursor};
 
     #[test]
     fn basic_decode_jpeg() {
@@ -380,9 +540,23 @@ mod tests {
 
     #[test]
     fn basic_decode_bin() {
-        let mut fe = File::open("src/fixtures/exif-sony-1.bin").expect("couldn't open file");
-        let e = Exif::new(&mut fe).expect("extract exif");
+        let fe = File::open("src/fixtures/exif-sony-1.bin").expect("couldn't open file");
+        let e = Exif::new(&mut BufReader::new(fe)).expect("extract exif");
         dump_exif(&e);
+    }
+
+    #[test]
+    fn basic_roundtrip() {
+        let fe = File::open("src/fixtures/exif-sony-1.bin").expect("open file");
+        let e = Exif::new(&mut BufReader::new(fe)).expect("extract exif");
+
+        let mut buf = Cursor::new(vec![]);
+        e.encode(&mut buf).expect("encode exif file");
+
+        buf.set_position(0);
+        Exif::new(&mut buf).expect("extract exif 2");
+
+        // dump_exif(&e);
     }
 
     fn dump_exif(e: &Exif) {
