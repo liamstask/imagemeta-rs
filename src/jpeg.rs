@@ -12,7 +12,6 @@ use byteorder::{ReadBytesExt, BigEndian};
 
 /// helper to extract an exif segment from a jpeg file
 pub fn extract_exif<R: Read + Seek>(rdr: &mut R) -> io::Result<Vec<u8>> {
-
     loop {
         // find next segment marker
         if 0xFF != try!(rdr.read_u8()) {

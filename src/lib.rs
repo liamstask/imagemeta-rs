@@ -35,7 +35,7 @@ impl Exif {
         try!(rdr.seek(SeekFrom::Start(offset_to_ifd as u64)));
 
         let mut ifds = vec![];
-        for i in 0..0xffff {
+        for i in 0.. {
             let (ifd, offset) = {
                 if big_endian { try!(Ifd::new::<_, BigEndian>(rdr, i)) }
                 else          { try!(Ifd::new::<_, LittleEndian>(rdr, i)) }
@@ -170,7 +170,7 @@ impl EntryHeader {
         // otherwise expect an OffsetValue::Offset to the data
         let ov = if Self::datatype_sz(fmt) * n as usize <= 4 {
             let mut buf = vec![0u8; 4];
-            try!(rdr.read(&mut buf));
+            try!(rdr.read_exact(&mut buf));
             OffsetValue::Value(buf)
         } else {
             OffsetValue::Offset(try!(rdr.read_u32::<B>()))
@@ -358,7 +358,7 @@ impl EntryData {
                 for _ in 0..h.count { v.push(try!(c.read_f64::<B>())); }
                 Ok(EntryData::Float64(v))
             },
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "invalid entry header format"))
+            v => Err(io::Error::new(io::ErrorKind::InvalidData, format!("invalid entry header format: 0x{:x}", v)))
         }
     }
 }
@@ -373,7 +373,6 @@ mod tests {
     fn basic_decode_jpeg() {
         let mut f = File::open("src/fixtures/IMG_2222.JPG").expect("couldn't open file");
         let segment = jpeg::extract_exif(&mut f).expect("extract exif");
-        println!("exif: {} bytes", segment.len());
 
         let e = Exif::new(&mut Cursor::new(segment)).expect("extract exif");
         dump_exif(&e);
