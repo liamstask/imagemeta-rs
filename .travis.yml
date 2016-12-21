@@ -8,5 +8,9 @@ rust:
 cache: cargo
 
 script:
-  - cargo build --verbose
-  - cargo test --verbose
+  - |
+    # treat warnings as errors
+    export RUSTFLAGS="-D warnings"
+
+    cargo build --verbose
+    cargo test --verbose
